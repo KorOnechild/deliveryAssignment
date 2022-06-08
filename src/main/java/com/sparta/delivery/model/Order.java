@@ -1,6 +1,7 @@
 package com.sparta.delivery.model;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -11,19 +12,32 @@ import java.util.List;
 @Entity
 @NoArgsConstructor
 public class Order {
-
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
+    @JsonIgnore
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "restaurantId")
-    private Restaurant restaurant;
-
-    @ManyToMany
-    @JoinColumn(name = "foods")
-    private List<Food> foods;
+    @Column(nullable = false)
+    private String restaurantName;
 
     @Column(nullable = false)
-    private Long quantity;
+    private Long deliveryFee;
+
+    @Column(nullable = false)
+    private Long totalPrice;
+
+    @OneToMany
+    @JoinColumn
+    private List<OrderDetail> foods;
+
+    public Order(String restaurantName,
+                 Long deliveryFee,
+                 Long totalPrice,
+                 List<OrderDetail> orderRequestDto){
+
+        this.restaurantName = restaurantName;
+        this.deliveryFee = deliveryFee;
+        this.totalPrice = totalPrice;
+        this.foods = orderRequestDto;
+    }
 }
