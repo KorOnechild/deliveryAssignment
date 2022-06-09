@@ -1,13 +1,17 @@
 package com.sparta.delivery.service;
 
+import com.sparta.delivery.dto.OrderDetailRequestDto;
+import com.sparta.delivery.dto.OrderDetailResponseDto;
 import com.sparta.delivery.dto.OrderRequestDto;
+import com.sparta.delivery.dto.OrderResponseDto;
 import com.sparta.delivery.model.Food;
-import com.sparta.delivery.model.Order;
+import com.sparta.delivery.model.Orders;
 import com.sparta.delivery.model.OrderDetail;
 import com.sparta.delivery.model.Restaurant;
 import com.sparta.delivery.repository.FoodRepository;
 import com.sparta.delivery.repository.OrderDetailRepository;
 import com.sparta.delivery.repository.OrderRepository;
+import com.sparta.delivery.validator.FoodValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,71 +21,78 @@ import java.util.List;
 @RequiredArgsConstructor
 @Service
 public class OrderService {
+
     private final OrderRepository orderRepository;
-    private final FoodService foodService;
-    private final FoodRepository foodRepository;
     private final OrderDetailRepository orderDetailRepository;
+    private final FoodRepository foodRepository;
+    private final FoodValidator foodValidator;
 
     //주문 등록 로직
-    public Order registerOrder(OrderRequestDto orderRequestDto) {
-        Restaurant restaurant = foodService.checkRestaurant(orderRequestDto.getRestaurantId());
-        List<OrderDetail> orderDetails = saveOrderDetail(orderRequestDto);
-        checkQuantity(orderDetails);
+    public OrderResponseDto registerOrder(OrderRequestDto orderRequestDto){
+        Restaurant restaurant = foodValidator.checkRestaurant(orderRequestDto.getRestaurantId());
 
+        List<OrderDetail> orderDetails = registerOrderDetails(orderRequestDto);
 
-        Order order = new Order(restaurant.getName(),
-                                restaurant.getDeliveryFee(),
-                                getTotalPrice(orderDetails),
-                                orderDetails);
+        Orders order = new Orders();
+        orderRepository.save(order);
 
-
-        return orderRepository.save(order);
+        return createOrderResponse(restaurant, createOrderDetailResponse(orderDetails), orderDetails);
     }
 
+    /*----------<OrderDetail 등록>----------*/
+    public List<OrderDetail> registerOrderDetails(OrderRequestDto orderRequestDto){
+        List<OrderDetailRequestDto> orderDetails = orderRequestDto.getFoods();
 
-    /*------------<주문 상세내용 저장>-----------*/
-    private List<OrderDetail> saveOrderDetail(OrderRequestDto orderRequestDto) {
-        List<OrderDetail> orderDetails = new ArrayList<>();
-
-        //주문 저장을 위해 주문상세내용 저장(주문 테이블에 주문 상세내용 리스트가 있기 때문)
-        for(int i = 0; i< orderRequestDto.getFoods().size(); i++){
-            Long foodId = orderRequestDto.getFoods().get(i).getId();
-            Long quantity = orderRequestDto.getFoods().get(i).getQuantity();
-            Food food = foodRepository.findById(foodId).orElseThrow(
-                    () -> new IllegalArgumentException("해당 음식이 존재하지 않습니다.")
+        for(OrderDetailRequestDto orderDetailRequestDto : orderDetails){
+            Food food = foodRepository.findById(orderDetailRequestDto.getId()).orElseThrow(
+                    ()-> new IllegalArgumentException("선택하신 메뉴가 존재하지 않습니다.")
             );
-            OrderDetail orderDetail = new OrderDetail(quantity, food);
-            orderDetail.setPrice(calculatatePrice(orderDetail, quantity));
 
+            OrderDetail orderDetail = new OrderDetail(food, orderDetailRequestDto.getQuantity());
             orderDetailRepository.save(orderDetail);
-            orderDetails.add(orderDetail);
         }
-
-        return orderDetails;
+        return orderDetailRepository.findAll();
     }
 
-    /*------------<음식 주문 수량 확인>-----------*/
-    public void checkQuantity(List<OrderDetail> orderDetails){
-        for (OrderDetail orderDetail : orderDetails) {
+    /*----------<totalPrice 계산>----------*/
+    public Long calTotalPrice(List<OrderDetail> orderDetails, Long deliveryFee){
+        Long totalPrice = deliveryFee;
+        for(OrderDetail orderDetail : orderDetails){
             Long quantity = orderDetail.getQuantity();
-            if (!(quantity >= 1 && quantity <= 100)) {
-                throw new IllegalArgumentException("주문수량을 1개에서 100개 사이로 입력해주세요");
-            }
-        }
-    }
-
-    /*------------<주문 음식 가격 계산>-----------*/
-    public Long calculatatePrice(OrderDetail orderDetail, Long quantity){
-        return orderDetail.getFood().getPrice() * quantity;
-    }
-
-    /*------------<최종 결제 금액 계산>-----------*/
-    public Long getTotalPrice(List<OrderDetail> orderDetail){
-        Long totalPrice = 0L;
-        for(int i=0; i<orderDetail.size(); i++) {
-            totalPrice += orderDetail.get(i).getPrice();
+            Long price = calOrderDetailPrice(orderDetail.getFood().getPrice(), quantity);
+            totalPrice += price;
         }
         return totalPrice;
     }
 
+    /*----------<orderDetail price 계산>----------*/
+    public Long calOrderDetailPrice(Long price, Long quantity){
+        return price * quantity;
+    }
+
+
+    /*----------<OrderDetailResponseDto 생성>----------*/
+    public List<OrderDetailResponseDto> createOrderDetailResponse(List<OrderDetail> orderDetails){
+        List<OrderDetailResponseDto> orderDetailResponseDtoList = new ArrayList<>();
+
+        for(OrderDetail orderDetail : orderDetails){
+            String foodName = orderDetail.getFood().getName();
+            Long quantity = orderDetail.getQuantity();
+            Long price = calOrderDetailPrice(orderDetail.getFood().getPrice(), quantity);
+            OrderDetailResponseDto orderDetailResponseDto = new OrderDetailResponseDto(foodName, quantity, price);
+            orderDetailResponseDtoList.add(orderDetailResponseDto);
+        }
+
+        return orderDetailResponseDtoList;
+    }
+
+    /*----------<OrderResponseDto 생성>----------*/
+    public OrderResponseDto createOrderResponse(Restaurant restaurant, List<OrderDetailResponseDto> orderDetailResponseDto, List<OrderDetail> orderDetails){
+        OrderResponseDto orderResponseDto = new OrderResponseDto();
+        orderResponseDto.setRestaurantName(restaurant.getName());
+        orderResponseDto.setFoods(orderDetailResponseDto);
+        orderResponseDto.setDeliveryFee(restaurant.getDeliveryFee());
+        orderResponseDto.setTotalPrice(calTotalPrice(orderDetails, restaurant.getDeliveryFee()));
+        return orderResponseDto;
+    }
 }
