@@ -11,24 +11,23 @@ import javax.persistence.*;
 @Setter
 @NoArgsConstructor
 public class OrderDetail {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-//    @JsonIgnore
     private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "foodId", nullable = false)
+    private Food food;
 
     @Column(nullable = false)
     private Long quantity;
 
-    @OneToOne
-    @JoinColumn(name = "foodId")
-    private Food food;
+    @ManyToOne
+    @JoinColumn(name = "orderId")
+    private Orders order;
 
-    @Column(nullable = false)
-    private Long price;
-
-    public OrderDetail(Long quantity, Food food){
-        this.quantity = quantity;
+    public OrderDetail(Food food, Long quantity){
         this.food = food;
+        this.quantity = quantity;
     }
 }
