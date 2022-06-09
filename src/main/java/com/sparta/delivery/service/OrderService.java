@@ -1,17 +1,19 @@
 package com.sparta.delivery.service;
 
+import com.sparta.delivery.CreateResponseDto;
 import com.sparta.delivery.dto.OrderDetailRequestDto;
 import com.sparta.delivery.dto.OrderDetailResponseDto;
 import com.sparta.delivery.dto.OrderRequestDto;
 import com.sparta.delivery.dto.OrderResponseDto;
 import com.sparta.delivery.model.Food;
-import com.sparta.delivery.model.Orders;
 import com.sparta.delivery.model.OrderDetail;
+import com.sparta.delivery.model.Orders;
 import com.sparta.delivery.model.Restaurant;
 import com.sparta.delivery.repository.FoodRepository;
 import com.sparta.delivery.repository.OrderDetailRepository;
 import com.sparta.delivery.repository.OrderRepository;
 import com.sparta.delivery.validator.FoodValidator;
+import com.sparta.delivery.validator.OrderValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -26,18 +28,29 @@ public class OrderService {
     private final OrderDetailRepository orderDetailRepository;
     private final FoodRepository foodRepository;
     private final FoodValidator foodValidator;
+    private final CreateResponseDto createOrderResponseDto;
+    private final OrderValidator orderValidator;
 
     //주문 등록 로직
     public OrderResponseDto registerOrder(OrderRequestDto orderRequestDto){
         Restaurant restaurant = foodValidator.checkRestaurant(orderRequestDto.getRestaurantId());
+        orderValidator.checkQuantity(orderRequestDto);
+        orderValidator.checkMinorderprice(orderRequestDto, restaurant);
 
         List<OrderDetail> orderDetails = registerOrderDetails(orderRequestDto);
 
         Orders order = new Orders();
+        order.setRestaurant(restaurant);
         orderRepository.save(order);
 
-        return createOrderResponse(restaurant, createOrderDetailResponse(orderDetails), orderDetails);
+        return createOrderResponseDto.createOrderResponse(restaurant, createOrderResponseDto.createOrderDetailResponse(orderDetails) , orderDetails);
     }
+
+    //주문 조회 로직
+    public List<OrderResponseDto> getOrders() {
+        return getOrderResponse();
+    }
+
 
     /*----------<OrderDetail 등록>----------*/
     public List<OrderDetail> registerOrderDetails(OrderRequestDto orderRequestDto){
@@ -54,45 +67,32 @@ public class OrderService {
         return orderDetailRepository.findAll();
     }
 
-    /*----------<totalPrice 계산>----------*/
-    public Long calTotalPrice(List<OrderDetail> orderDetails, Long deliveryFee){
-        Long totalPrice = deliveryFee;
-        for(OrderDetail orderDetail : orderDetails){
-            Long quantity = orderDetail.getQuantity();
-            Long price = calOrderDetailPrice(orderDetail.getFood().getPrice(), quantity);
-            totalPrice += price;
-        }
-        return totalPrice;
-    }
 
-    /*----------<orderDetail price 계산>----------*/
-    public Long calOrderDetailPrice(Long price, Long quantity){
-        return price * quantity;
-    }
-
-
-    /*----------<OrderDetailResponseDto 생성>----------*/
-    public List<OrderDetailResponseDto> createOrderDetailResponse(List<OrderDetail> orderDetails){
-        List<OrderDetailResponseDto> orderDetailResponseDtoList = new ArrayList<>();
+    /*----------<주문 조회 ResponseDto 생성>----------*/
+    private List<OrderResponseDto> getOrderResponse() {
+        List<Orders> order = orderRepository.findAll();
+        List<OrderDetail> orderDetails = orderDetailRepository.findAll();
+        List<OrderDetailResponseDto> orderDetailResponseDtos = new ArrayList<>();
+        List<OrderResponseDto> orders = new ArrayList<>();
 
         for(OrderDetail orderDetail : orderDetails){
-            String foodName = orderDetail.getFood().getName();
-            Long quantity = orderDetail.getQuantity();
-            Long price = calOrderDetailPrice(orderDetail.getFood().getPrice(), quantity);
-            OrderDetailResponseDto orderDetailResponseDto = new OrderDetailResponseDto(foodName, quantity, price);
-            orderDetailResponseDtoList.add(orderDetailResponseDto);
+            OrderDetailResponseDto orderDetailResponseDto = new OrderDetailResponseDto();
+
+            orderDetailResponseDto.setName(orderDetail.getFood().getName());
+
+            orderDetailResponseDto.setPrice(
+                    createOrderResponseDto.calOrderDetailPrice(orderDetail.getFood().getPrice(), orderDetail.getQuantity()));
+
+            orderDetailResponseDto.setQuantity(orderDetail.getQuantity());
+
+            orderDetailResponseDtos.add(orderDetailResponseDto);
         }
 
-        return orderDetailResponseDtoList;
-    }
+        for (Orders value : order) {
+            Restaurant restaurant = value.getRestaurant();
+            orders.add(createOrderResponseDto.createOrderResponse(restaurant, orderDetailResponseDtos, orderDetails));
+        }
 
-    /*----------<OrderResponseDto 생성>----------*/
-    public OrderResponseDto createOrderResponse(Restaurant restaurant, List<OrderDetailResponseDto> orderDetailResponseDto, List<OrderDetail> orderDetails){
-        OrderResponseDto orderResponseDto = new OrderResponseDto();
-        orderResponseDto.setRestaurantName(restaurant.getName());
-        orderResponseDto.setFoods(orderDetailResponseDto);
-        orderResponseDto.setDeliveryFee(restaurant.getDeliveryFee());
-        orderResponseDto.setTotalPrice(calTotalPrice(orderDetails, restaurant.getDeliveryFee()));
-        return orderResponseDto;
+        return orders;
     }
 }
