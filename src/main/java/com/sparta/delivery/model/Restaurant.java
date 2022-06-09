@@ -31,6 +31,8 @@ public class Restaurant {
     @JoinColumn(name = "menu")
     private Collection<Food> foods;
 
+
+
     public Restaurant(RestaurantDto restaurantDto){
         this.name = restaurantDto.getName();
         this.minOrderPrice = restaurantDto.getMinOrderPrice();
